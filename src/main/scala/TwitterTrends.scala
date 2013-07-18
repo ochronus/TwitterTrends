@@ -1,18 +1,41 @@
 package ochronus.twitter.trends
-//http://bcomposes.wordpress.com/2013/02/09/using-twitter4j-with-scala-to-access-streaming-tweets/
+
 import twitter4j._
- 
+import com.typesafe.config.ConfigFactory
+
 object StatusStreamer {
+
+    val config = ConfigFactory.load
+
     object Util {
-      val config = new twitter4j.conf.ConfigurationBuilder()
-        .setOAuthConsumerKey("")
-        .setOAuthConsumerSecret("")
-        .setOAuthAccessToken("")
-        .setOAuthAccessTokenSecret("")
+      val twitter_config = new twitter4j.conf.ConfigurationBuilder()
+        .setOAuthConsumerKey(config.getString("twitter.OAuthConsumerKey"))
+        .setOAuthConsumerSecret(config.getString("twitter.OAuthConsumerSecret"))
+        .setOAuthAccessToken(config.getString("twitter.OAuthAccessToken"))
+        .setOAuthAccessTokenSecret(config.getString("twitter.OAuthAccessTokenSecret"))
         .build
-        
+
+        val places = scala.collection.mutable.Map.empty[String, Int]
+        val hashtags = scala.collection.mutable.Map.empty[String, Int]
+        var message_count = 0
+
         def simpleStatusListener = new StatusListener() {
-          def onStatus(status: Status) { println(status.getText) }
+          def onStatus(status: Status) {
+            message_count += 1
+            val msg = status.getText.toLowerCase
+
+            for (m <- """#[^\s]+""".r findAllMatchIn msg) {
+              val word = m.matched
+              hashtags(word) = if (hashtags contains word) hashtags(word) + 1 else 1
+            }
+
+            if (status.getPlace != null) {
+              val country =  status.getPlace.getCountry
+
+              places(country) = if (places contains country) places(country) + 1 else 1
+            }
+          }
+
           def onDeletionNotice(statusDeletionNotice: StatusDeletionNotice) {}
           def onTrackLimitationNotice(numberOfLimitedStatuses: Int) {}
           def onException(ex: Exception) { ex.printStackTrace }
@@ -20,18 +43,20 @@ object StatusStreamer {
           def onStallWarning(warning: StallWarning) {}
         }
     }
-    
-    
 
-        
+
+
     def main(args: Array[String]) {
 
-        val twitterStream = new TwitterStreamFactory(Util.config).getInstance
+        val twitterStream = new TwitterStreamFactory(Util.twitter_config).getInstance
         twitterStream.addListener(Util.simpleStatusListener)
         twitterStream.sample
-        Thread.sleep(20000)
+        Thread.sleep(6000)
         twitterStream.cleanUp
-        twitterStream.shutdown 
- 
+        twitterStream.shutdown
+        Console.println(Util.places)
+        Console.println(Util.hashtags.filter( e => e._2 >4 ).toList sortBy {_._2})
+        Console.println(Util.message_count)
+        Console.println(Util.hashtags.keys.toList.length)
   }
 }
